@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ms">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MT-GALUS Dashboard Guru</title>
+<style>
+:root{--b:#2563eb;--i:#18324a;--m:#6b7f93;--l:#d8e6f3;--g:#16a34a;--r:#dc2626}
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#eef7ff;color:var(--i)}
+.app{max-width:980px;margin:auto;padding:14px}.card{background:#fff;border:1px solid var(--l);border-radius:18px;padding:16px;margin-bottom:14px}
+input,textarea{width:100%;padding:12px;border:1px solid var(--l);border-radius:12px;font:inherit}.btn{border:0;border-radius:12px;padding:12px 14px;font-weight:800;cursor:pointer}.primary{background:var(--b);color:#fff}.ghost{background:#fff;border:1px solid var(--l)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.grow{flex:1}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.mini{background:#f7fbff;border:1px solid var(--l);border-radius:14px;padding:12px}.student{width:100%;display:flex;justify-content:space-between;gap:10px;text-align:left;padding:13px;border:1px solid var(--l);border-radius:14px;background:#fff;margin:8px 0}
+.pill{padding:6px 9px;border-radius:99px;background:#eaf8ee;color:#11662b;font-weight:800}.detail{border:1px solid var(--l);border-radius:14px;padding:13px;margin:10px 0}.bad{color:var(--r)}.good{color:var(--g)}
+.imgwrap img{max-width:100%;max-height:360px;object-fit:contain;background:#f7f7f7;border-radius:10px}.notice{padding:10px;border-radius:10px;background:#fff7df;margin-top:8px}
+.hidden{display:none}.sticky{position:sticky;bottom:10px;background:#fff;border:1px solid var(--l);border-radius:14px;padding:10px;box-shadow:0 8px 24px #0001}
+a{color:var(--b);font-weight:700}.muted{color:var(--m)}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="card">
+    <div class="row">
+      <div class="grow"><h2 style="margin:0">👩‍🏫 MT-GALUS Dashboard Guru</h2><div class="muted">Semakan online murid</div></div>
+      <button id="refresh" class="btn ghost">↻ Refresh</button>
+    </div>
+  </div>
+
+  <div id="login" class="card">
+    <label><b>PIN Guru</b></label>
+    <div class="row"><input id="pin" class="grow" type="password" inputmode="numeric" placeholder="Masukkan PIN"><button id="open" class="btn primary">Buka Dashboard</button></div>
+    <div id="loginMsg" class="notice hidden"></div>
+  </div>
+
+  <section id="dash" class="hidden">
+    <div class="card"><div id="stats" class="grid"></div></div>
+    <div class="card">
+      <div class="row"><input id="search" class="grow" placeholder="Cari nama atau kelas..."><select id="setFilter" style="padding:12px;border:1px solid var(--l);border-radius:12px"><option value="">Semua Set</option><option value="1">Set 1</option><option value="2">Set 2</option><option value="3">Set 3</option></select></div>
+      <div id="list"></div>
+    </div>
+    <div id="detailCard" class="card hidden"></div>
+  </section>
+</div>
+
+<script>
+const API='https://script.google.com/macros/s/AKfycbxYw2n-qSHiLdsC-mBu-_vZK5jPX6rj2BiEZomEP722beFTnbRfBVOHffY5MEmP8ESa/exec';
+let PIN='',DATA=[],CURRENT=null;
+
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const fileId=url=>{let m=String(url||'').match(/\/d\/([^/]+)/);return m?m[1]:''};
+const thumb=url=>{let id=fileId(url);return id?`https://drive.google.com/thumbnail?id=${id}&sz=w1200`:''};
+
+async function load(){
+  const res=await fetch(`${API}?action=submissions&pin=${encodeURIComponent(PIN)}`);
+  const data=await res.json();
+  if(!data.success)throw new Error(data.message||'Gagal membaca data');
+  DATA=data.items||[];
+  renderStats();renderList();
+}
+$('open').onclick=async()=>{
+  PIN=$('pin').value.trim();
+  if(!PIN)return;
+  try{await load();$('login').classList.add('hidden');$('dash').classList.remove('hidden')}
+  catch(e){$('loginMsg').textContent=e.message;$('loginMsg').classList.remove('hidden')}
+};
+$('refresh').onclick=()=>PIN&&load();
+$('search').oninput=renderList;$('setFilter').onchange=renderList;
+
+function renderStats(){
+  let avg=DATA.length?Math.round(DATA.reduce((s,x)=>s+x.markah/x.jumlah*100,0)/DATA.length):0;
+  let help=DATA.reduce((s,x)=>s+x.bilDibantu,0);
+  $('stats').innerHTML=`<div class="mini"><small>Penghantaran</small><h2>${DATA.length}</h2></div><div class="mini"><small>Purata</small><h2>${avg}%</h2></div><div class="mini"><small>Soalan Dibantu</small><h2>${help}</h2></div><div class="mini"><small>Belum Disemak</small><h2>${DATA.filter(x=>x.status!=='DISEMAK').length}</h2></div>`;
+}
+function renderList(){
+  let q=$('search').value.toLowerCase().trim(),sf=$('setFilter').value;
+  let a=DATA.filter(x=>(!q||(`${x.nama} ${x.kelas}`).toLowerCase().includes(q))&&(!sf||String(x.set)===sf));
+  $('list').innerHTML=a.length?a.map(x=>`<button class="student" onclick="openDetail('${esc(x.id)}')"><span><b>${esc(x.nama)}</b><br><small>${esc(x.kelas)} • Set ${x.set} • ${x.status}</small></span><span class="pill">${x.markah}/${x.jumlah}</span></button>`).join(''):'<p class="muted">Tiada rekod.</p>';
+}
+window.openDetail=id=>{
+  CURRENT=DATA.find(x=>x.id===id);if(!CURRENT)return;
+  let fbMap=Object.fromEntries((CURRENT.maklumBalas||[]).map(x=>[x.no,x.text||'']));
+  let linkMap=Object.fromEntries((CURRENT.linkPanduan||[]).map(x=>[x.no,x.link||'']));
+  let imgMap=Object.fromEntries((CURRENT.gambarPanduan||[]).map(x=>[x.no,x.imageUrl||'']));
+
+  $('detailCard').innerHTML=`<div class="row"><div class="grow"><h2 style="margin:0">${esc(CURRENT.nama)}</h2><div class="muted">${esc(CURRENT.kelas)} • Set ${CURRENT.set} • ${CURRENT.markah}/${CURRENT.jumlah} • ${CURRENT.masaSaat}s • Dibantu ${CURRENT.bilDibantu}</div></div></div>`+
+  CURRENT.jawapan.map((x,n)=>{
+    let img=CURRENT.gambar[n]||'',no=n+1,t=thumb(img);
+    return `<div class="detail">
+      <div class="row"><b class="grow">Soalan ${no}: ${esc(x.soalan)} =</b><b class="${x.betul?'good':'bad'}">${x.betul?'✓ Betul':'✗ Salah'}</b></div>
+      <p>Jawapan murid: <b>${esc(x.jawapanMurid)}</b> &nbsp; | &nbsp; Jawapan betul: <b>${esc(x.jawapanBetul)}</b></p>
+      <p>${x.dibantu?'👨‍👩‍👧 Dibantu keluarga':'🧒 Buat sendiri'}</p>
+      <div class="imgwrap">${t?`<img src="${t}" onerror="this.style.display='none'">`:''}${img?`<p><a href="${img}" target="_blank">🖼 Buka gambar jalan kira</a></p>`:'<div class="notice">Gambar tidak tersedia.</div>'}</div>
+      <label><b>Maklum balas guru</b></label><textarea id="fb_${no}" placeholder="Contoh: Semak semula pengumpulan semula pada lajur puluh.">${esc(fbMap[no]||'')}</textarea>
+      <label><b>Link video / panduan</b></label><input id="link_${no}" type="text" value="${esc(linkMap[no]||'')}" placeholder="https://...">
+      <label><b>Gambar panduan guru (galeri/kamera)</b></label><input id="gimg_${no}" type="file" accept="image/*">
+      <div id="gprev_${no}">${imgMap[no]?`<p><a href="${imgMap[no]}" target="_blank">Lihat gambar panduan sedia ada</a></p>`:''}</div>
+    </div>`;
+  }).join('')+
+  `<div class="sticky"><button id="saveAll" class="btn primary" style="width:100%">Simpan & Hantar Semua Maklum Balas</button><div id="saveMsg" class="notice hidden"></div></div>`;
+  $('detailCard').classList.remove('hidden');$('detailCard').scrollIntoView({behavior:'smooth'});
+  $('saveAll').onclick=saveAll;
+};
+
+function compressFile(file,max=1200,q=.68){
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader();r.onload=()=>{let im=new Image();im.onload=()=>{let s=Math.min(1,max/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);c.getContext('2d').drawImage(im,0,0,c.width,c.height);resolve(c.toDataURL('image/jpeg',q))};im.onerror=reject;im.src=r.result};r.onerror=reject;r.readAsDataURL(file)
+  })
+}
+async function uploadTeacherImage(file,no){
+  if(!file)return '';
+  let b64=await compressFile(file);
+  let payload={type:'teacherImage',submissionId:CURRENT.id,nama:CURRENT.nama,kelas:CURRENT.kelas,soalanNo:no,base64Data:b64};
+  let res=await fetch(API,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload),redirect:'follow'});
+  let data=await res.json();if(!data.success)throw new Error(data.message||'Upload gambar guru gagal');return data.url||''
+}
+async function saveAll(){
+  const btn=$('saveAll');btn.disabled=true;btn.textContent='Menyimpan...';
+  try{
+    let feedback=[];
+    for(let n=1;n<=CURRENT.jawapan.length;n++){
+      let file=$(`gimg_${n}`).files[0],imageUrl='';
+      if(file)imageUrl=await uploadTeacherImage(file,n);
+      feedback.push({no:n,text:$(`fb_${n}`).value.trim(),link:$(`link_${n}`).value.trim(),imageUrl});
+    }
+    let res=await fetch(API,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({type:'feedback',pin:PIN,id:CURRENT.id,feedback}),redirect:'follow'});
+    let data=await res.json();if(!data.success)throw new Error(data.message||'Gagal simpan maklum balas');
+    $('saveMsg').textContent='✓ Semua maklum balas berjaya disimpan.';$('saveMsg').classList.remove('hidden');
+    await load();
+  }catch(e){$('saveMsg').textContent='⚠ '+e.message;$('saveMsg').classList.remove('hidden')}
+  finally{btn.disabled=false;btn.textContent='Simpan & Hantar Semua Maklum Balas'}
+}
+</script>
+</body></html>
